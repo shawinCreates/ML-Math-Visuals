@@ -1891,3 +1891,148 @@ body {
     max-height: 240px;
   }
 }
+
+/* ---------- hero demo tabs ---------- */
+.demo-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 2px 10px;
+}
+
+.demo-tab {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .demo-tab:hover {
+    color: var(--ink);
+    background: var(--bg);
+  }
+}
+
+.demo-tab-active,
+.demo-tab-active:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border);
+  color: var(--accent-ink);
+}
+
+/* ---------- topic card thumbnails ---------- */
+.topic-thumb-wrap {
+  display: block;
+  background: var(--bg);
+  border-radius: var(--r-control);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.topic-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---------- learning paths ---------- */
+.paths {
+  margin-bottom: 36px;
+}
+
+.path-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.path-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+}
+
+.path-name {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.path-desc {
+  margin: 3px 0 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  flex: 1 1 auto;
+}
+
+.path-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--grid);
+  overflow: hidden;
+}
+
+.path-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 400ms var(--ease-out);
+}
+
+.path-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0 12px;
+}
+
+.path-btn {
+  width: 100%;
+  text-align: center;
+}
+
+/* ---------- roadmap ghost cards ---------- */
+.roadmap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  background: none;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-card);
+  padding: 14px 16px;
+}
+
+.roadmap-card .topic-card-blurb {
+  display: block;
+}
+
+.roadmap-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--grid);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-tab,
+  .path-bar-fill {
+    transition: none;
+  }
+}

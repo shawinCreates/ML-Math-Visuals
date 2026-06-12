@@ -1,257 +1,26 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { ALL_TOPICS, CATEGORIES, Topic, findTopic } from "../topics";
+import { PATHS } from "../paths";
 import { countExperimentsDone } from "./TryThis";
+import { NetworkDemo, DescentDemo, AttentionDemo } from "./HeroDemos";
+import { TopicThumb } from "./TopicThumb";
 
 const reducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ----------------------------------------------------------------
-   live hero demo: a real neural network (2-4-4-1, tanh) training
-   on XOR with backpropagation, rendered as it learns
-   ---------------------------------------------------------------- */
+const DEMOS = [
+  { id: "network", label: "Neural net", caption: "a real network learning XOR, live", C: NetworkDemo },
+  { id: "descent", label: "Gradient descent", caption: "stepping down the loss curve, live", C: DescentDemo },
+  { id: "attention", label: "Attention", caption: "real softmax over drifting word vectors", C: AttentionDemo },
+] as const;
 
-const LAYERS = [2, 4, 4, 1];
-const NET_W = 420;
-const NET_H = 280;
-const LR = 0.04;
-// XOR with ±1 encoding: [x1, x2, target]
-const XOR: [number, number, number][] = [
-  [-1, -1, -1],
-  [-1, 1, 1],
-  [1, -1, 1],
-  [1, 1, -1],
+const ROADMAP = [
+  { title: "Word Embeddings", note: "Word2Vec: words as vectors you can do arithmetic on" },
+  { title: "Backprop by Hand", note: "the chain rule walked through one weight at a time" },
+  { title: "Bayesian Inference", note: "beliefs as distributions that update with evidence" },
+  { title: "GANs", note: "two networks training against each other" },
+  { title: "Diffusion Models", note: "generating images by learning to undo noise" },
 ];
-
-function nodePos(layer: number, i: number): [number, number] {
-  const x = 50 + (layer * (NET_W - 100)) / (LAYERS.length - 1);
-  const n = LAYERS[layer];
-  const gap = Math.min(56, (NET_H - 90) / Math.max(n - 1, 1));
-  const y = NET_H / 2 - 8 + (i - (n - 1) / 2) * gap;
-  return [x, y];
-}
-
-interface Net {
-  W: number[][][]; // W[l][j][i]: layer l node i -> layer l+1 node j
-  B: number[][];
-}
-
-function makeNet(): Net {
-  return {
-    W: LAYERS.slice(0, -1).map((nIn, l) =>
-      Array.from({ length: LAYERS[l + 1] }, () =>
-        Array.from({ length: nIn }, () => (Math.random() * 2 - 1) * 0.9)
-      )
-    ),
-    B: LAYERS.slice(1).map((n) => Array.from({ length: n }, () => (Math.random() * 2 - 1) * 0.3)),
-  };
-}
-
-function forward(net: Net, input: number[]): number[][] {
-  const acts = [input];
-  for (let l = 0; l < net.W.length; l++) {
-    acts.push(
-      net.W[l].map((row, j) =>
-        Math.tanh(row.reduce((s, w, i) => s + w * acts[l][i], net.B[l][j]))
-      )
-    );
-  }
-  return acts;
-}
-
-/** One full-batch backprop pass over XOR; returns mean squared error. */
-function trainStep(net: Net): number {
-  let loss = 0;
-  for (const [x1, x2, target] of XOR) {
-    const acts = forward(net, [x1, x2]);
-    const out = acts[acts.length - 1][0];
-    loss += (out - target) ** 2;
-    let delta = [(out - target) * (1 - out * out)];
-    for (let l = net.W.length - 1; l >= 0; l--) {
-      const prevDelta = acts[l].map((a, i) => {
-        let s = 0;
-        for (let j = 0; j < delta.length; j++) s += net.W[l][j][i] * delta[j];
-        return s * (1 - a * a);
-      });
-      for (let j = 0; j < delta.length; j++) {
-        net.B[l][j] -= LR * delta[j];
-        for (let i = 0; i < acts[l].length; i++) {
-          net.W[l][j][i] -= LR * delta[j] * acts[l][i];
-        }
-      }
-      delta = prevDelta;
-    }
-  }
-  return loss / XOR.length;
-}
-
-interface EdgeRef {
-  l: number;
-  i: number;
-  j: number;
-  line: SVGLineElement | null;
-  dot: SVGCircleElement | null;
-}
-
-function HeroDemo() {
-  const [animated] = useState(() => !reducedMotion());
-  const netRef = useRef<Net>();
-  if (!netRef.current) netRef.current = makeNet();
-
-  const edges: EdgeRef[] = [];
-  for (let l = 0; l < LAYERS.length - 1; l++) {
-    for (let j = 0; j < LAYERS[l + 1]; j++) {
-      for (let i = 0; i < LAYERS[l]; i++) {
-        edges.push({ l, i, j, line: null, dot: null });
-      }
-    }
-  }
-  const edgeRefs = useRef(edges);
-  const glowRefs = useRef<(SVGCircleElement | null)[][]>(LAYERS.map((n) => Array(n).fill(null)));
-  const lossRef = useRef<SVGTextElement>(null);
-
-  useEffect(() => {
-    if (!animated) return;
-    const net = netRef.current!;
-    let raf = 0;
-    let frame = 0;
-    let loss = 1;
-    let pulseStart = performance.now();
-    let acts = forward(net, [XOR[0][0], XOR[0][1]]);
-    const SEG_MS = 700; // pulse travel time per layer
-    const REST_MS = 500;
-
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick);
-      frame++;
-
-      loss = trainStep(net);
-      if (loss < 0.004) {
-        // solved XOR: start over so the descent is always on display
-        netRef.current = makeNet();
-        Object.assign(net, netRef.current);
-      }
-
-      // weights change every frame; repaint them at ~12fps
-      if (frame % 5 === 0) {
-        for (const e of edgeRefs.current) {
-          if (!e.line) continue;
-          const w = net.W[e.l][e.j][e.i];
-          e.line.setAttribute("stroke", w >= 0 ? "var(--accent)" : "#9aa6b8");
-          e.line.setAttribute("stroke-width", (0.5 + Math.min(Math.abs(w), 2.4) * 0.9).toFixed(2));
-          e.line.setAttribute("stroke-opacity", (0.16 + Math.min(Math.abs(w), 2) * 0.3).toFixed(2));
-        }
-        lossRef.current?.replaceChildren(
-          document.createTextNode(`training on XOR · loss ${loss.toFixed(3)}`)
-        );
-      }
-
-      // forward-pass pulse: one sample flows through, layer by layer
-      const t = now - pulseStart;
-      const totalMs = (LAYERS.length - 1) * SEG_MS + REST_MS;
-      if (t > totalMs) {
-        pulseStart = now;
-        const sample = XOR[Math.floor(Math.random() * XOR.length)];
-        acts = forward(net, [sample[0], sample[1]]);
-      }
-      const p = Math.min(t / SEG_MS, LAYERS.length - 1);
-      const seg = Math.min(Math.floor(p), LAYERS.length - 2);
-      const frac = p - seg;
-
-      for (const e of edgeRefs.current) {
-        if (!e.dot) continue;
-        if (e.l !== seg || t > (LAYERS.length - 1) * SEG_MS) {
-          e.dot.setAttribute("opacity", "0");
-          continue;
-        }
-        const [x1, y1] = nodePos(e.l, e.i);
-        const [x2, y2] = nodePos(e.l + 1, e.j);
-        e.dot.setAttribute("cx", (x1 + (x2 - x1) * frac).toFixed(1));
-        e.dot.setAttribute("cy", (y1 + (y2 - y1) * frac).toFixed(1));
-        const strength = Math.abs(acts[e.l][e.i]);
-        e.dot.setAttribute("opacity", (0.25 + 0.6 * strength * Math.sin(Math.PI * frac)).toFixed(2));
-      }
-
-      // node glow tracks activations as the pulse arrives
-      glowRefs.current.forEach((layer, l) => {
-        layer.forEach((glow, i) => {
-          if (!glow) return;
-          const arrived = l === 0 ? 1 : p >= l ? 1 : p > l - 1 ? frac : 0;
-          glow.setAttribute("opacity", (Math.abs(acts[l][i]) * 0.85 * arrived).toFixed(2));
-        });
-      });
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [animated]);
-
-  const net = netRef.current!;
-
-  return (
-    <svg
-      className="hero-demo-svg"
-      viewBox={`0 0 ${NET_W} ${NET_H}`}
-      role="img"
-      aria-label="A small neural network training on XOR, with signals flowing through its layers"
-    >
-      {edgeRefs.current.map((e, k) => {
-        const [x1, y1] = nodePos(e.l, e.i);
-        const [x2, y2] = nodePos(e.l + 1, e.j);
-        const w = net.W[e.l][e.j][e.i];
-        return (
-          <line
-            key={"e" + k}
-            ref={(el) => (edgeRefs.current[k].line = el)}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            stroke={w >= 0 ? "var(--accent)" : "#9aa6b8"}
-            strokeWidth={0.5 + Math.min(Math.abs(w), 2.4) * 0.9}
-            strokeOpacity={0.16 + Math.min(Math.abs(w), 2) * 0.3}
-          />
-        );
-      })}
-      {animated &&
-        edgeRefs.current.map((_, k) => (
-          <circle
-            key={"d" + k}
-            ref={(el) => (edgeRefs.current[k].dot = el)}
-            r="2.4"
-            fill="var(--accent)"
-            opacity="0"
-          />
-        ))}
-      {LAYERS.map((n, l) =>
-        Array.from({ length: n }, (_, i) => {
-          const [x, y] = nodePos(l, i);
-          return (
-            <g key={`n${l}-${i}`}>
-              <circle cx={x} cy={y} r="10" fill="var(--panel)" stroke="var(--border-strong)" strokeWidth="1.5" />
-              <circle
-                ref={(el) => (glowRefs.current[l][i] = el)}
-                cx={x}
-                cy={y}
-                r="6"
-                fill="var(--accent)"
-                opacity={animated ? 0 : 0.45}
-              />
-            </g>
-          );
-        })
-      )}
-      <text x={nodePos(0, 0)[0]} y={NET_H - 14} textAnchor="middle" className="hero-demo-label">
-        input
-      </text>
-      <text x={nodePos(3, 0)[0]} y={NET_H - 14} textAnchor="middle" className="hero-demo-label">
-        output
-      </text>
-      <text ref={lossRef} x="16" y="22" className="hero-demo-label">
-        {animated ? "training on XOR" : "a 2-4-4-1 network"}
-      </text>
-    </svg>
-  );
-}
 
 /* ---------- scroll reveal ---------- */
 
@@ -324,6 +93,8 @@ interface HomeProps {
 
 export function Home({ visited, lastTopicId, onSelect }: HomeProps) {
   const catalogRef = useRef<HTMLDivElement>(null);
+  const [demoId, setDemoId] = useState<(typeof DEMOS)[number]["id"]>("network");
+  const demo = DEMOS.find((d) => d.id === demoId)!;
   const experiments = countExperimentsDone();
   const started = visited.size > 0;
   const resume =
@@ -347,15 +118,30 @@ export function Home({ visited, lastTopicId, onSelect }: HomeProps) {
             </button>
             <button
               className="btn btn-lg"
-              onClick={() => catalogRef.current?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth" })}
+              onClick={() =>
+                catalogRef.current?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth" })
+              }
             >
               Browse topics
             </button>
           </div>
         </div>
         <div className="hero-demo">
-          <HeroDemo />
-          <p className="hero-demo-caption">a real network learning XOR, live</p>
+          <div className="demo-tabs" role="tablist" aria-label="Live demos">
+            {DEMOS.map((d) => (
+              <button
+                key={d.id}
+                role="tab"
+                aria-selected={demoId === d.id}
+                className={"demo-tab" + (demoId === d.id ? " demo-tab-active" : "")}
+                onClick={() => setDemoId(d.id)}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <demo.C key={demo.id} />
+          <p className="hero-demo-caption">{demo.caption}</p>
         </div>
       </section>
 
@@ -377,6 +163,36 @@ export function Home({ visited, lastTopicId, onSelect }: HomeProps) {
         </div>
       </section>
 
+      <section className="paths" aria-label="Learning paths">
+        <div className="catalog-head">
+          <h2>Learning paths</h2>
+          <span className="catalog-count">pick a track, follow the steps</span>
+        </div>
+        <div className="path-cards">
+          {PATHS.map((p) => {
+            const done = p.topics.filter((id) => visited.has(id)).length;
+            const nextId = p.topics.find((id) => !visited.has(id)) ?? p.topics[0];
+            const next = findTopic(nextId)!;
+            const complete = done === p.topics.length;
+            return (
+              <div key={p.id} className="path-card">
+                <div className="path-name">{p.name}</div>
+                <p className="path-desc">{p.description}</p>
+                <div className="path-bar" aria-hidden="true">
+                  <div className="path-bar-fill" style={{ width: `${(done / p.topics.length) * 100}%` }} />
+                </div>
+                <div className="path-meta">
+                  {done} of {p.topics.length} steps done
+                </div>
+                <button className="btn path-btn" onClick={() => onSelect(next.id)}>
+                  {complete ? `Revisit: ${next.title}` : done === 0 ? `Start: ${next.title}` : `Next: ${next.title}`}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       <div className="catalog" ref={catalogRef}>
         {CATEGORIES.map((cat) => (
           <Reveal key={cat.name}>
@@ -395,6 +211,7 @@ export function Home({ visited, lastTopicId, onSelect }: HomeProps) {
                     style={{ "--i": i } as React.CSSProperties}
                     onClick={() => onSelect(t.id)}
                   >
+                    <TopicThumb id={t.id} />
                     <span className="topic-card-top">
                       <span className={"level level-" + t.level.toLowerCase()}>{t.level}</span>
                       <span className="topic-min">~{t.minutes} min</span>
@@ -426,6 +243,24 @@ export function Home({ visited, lastTopicId, onSelect }: HomeProps) {
             </section>
           </Reveal>
         ))}
+
+        <Reveal>
+          <section className="catalog-section" aria-label="Planned topics">
+            <div className="catalog-head">
+              <h2>On the roadmap</h2>
+              <span className="catalog-count">{ROADMAP.length} planned</span>
+            </div>
+            <div className="topic-cards">
+              {ROADMAP.map((r) => (
+                <div key={r.title} className="roadmap-card">
+                  <span className="roadmap-tag">planned</span>
+                  <span className="topic-card-title">{r.title}</span>
+                  <span className="topic-card-blurb">{r.note}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </Reveal>
       </div>
     </div>
   );
